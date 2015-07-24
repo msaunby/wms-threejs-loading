@@ -1,0 +1,20 @@
+{
+  "name": "wms-threejs-loading",
+  "version": "0.0.0",
+  "homepage": "https://github.com/msaunby/wms-threejs-loading",
+  "authors": [
+    "michael.saunby@informaticslab.co.uk"
+  ],
+  "license": "Apache 2.0",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "threejs": "*",
+    "jquery": "~2.1.4"
+  }
+}
