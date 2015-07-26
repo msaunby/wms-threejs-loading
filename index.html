@@ -105,8 +105,8 @@
     model:'UKPPBEST',
     CRS:'EPSG:4326',
     BBOX:'-10.12,48.77,2.43,59.29',
-    WIDTH:512,
-    HEIGHT:512,
+    WIDTH:256,
+    HEIGHT:256,
   };
 
   var cloudBaseUrl = 'http://python-wetoffice.rhcloud.com/tiffpngf?';
@@ -153,7 +153,7 @@
   // The proxy fetches GeoTIFFfloat data, i.e.
   // grid of 32 bit floating point numbers which it packs
   // into a PNG image.
-  function loadWcsData( url, params, cb ){
+  function loadWcsData( url, params, obj, cb ){
     var tmpImage = new Image();
     var wcsPng = url + jQuery.param( params );
     tmpImage.onload = function(){
@@ -167,7 +167,7 @@
       // Write to the buffer as bytes - always
       (new Uint8Array(buffer)).set( imageData );
       var floatArray = new Float32Array(buffer);
-      cb(floatArray,canv.width,canv.height);
+      cb(floatArray,canv.width,canv.height, obj);
     }
     tmpImage.crossOrigin = 'anonymous';
     tmpImage.src =  wcsPng;
@@ -221,28 +221,29 @@
     }
   );
 
-  var canvas = document.createElement( 'canvas' );
-  var texture = new THREE.Texture( canvas );
-  var material = new THREE.MeshPhongMaterial({side: THREE.DoubleSide,
-  map: texture, transparent: true,
-  specular: 0xffffff,
-  shininess: 20});
-  var planeGeo = new THREE.PlaneBufferGeometry( 1000, 1000, 499, 499 );
-  var mesh = new THREE.Mesh(	planeGeo, material );
-  mesh.position.z = 10;
-  scene.add( mesh );
+  var coverobj = {};
+  coverobj.canvas = document.createElement( 'canvas' );
+  coverobj.texture = new THREE.Texture( coverobj.canvas );
+  coverobj.material = new THREE.MeshPhongMaterial({side: THREE.DoubleSide,
+      map: coverobj.texture, transparent: true,
+      specular: 0xffffff,
+      shininess: 20});
+  coverobj.plane = new THREE.PlaneBufferGeometry( 512, 512, 511, 511 );
+  coverobj.mesh = new THREE.Mesh(	coverobj.plane, coverobj.material );
+  coverobj.mesh.position.z = 10;
+  scene.add( coverobj.mesh );
 
-  loadWcsData( cloudCoverUrl, cloudCoverParams,
-    function(floatArray, width, height){
+  loadWcsData( cloudCoverUrl, cloudCoverParams, coverobj,
+    function(floatArray, width, height, obj){
       console.warn('have cloud data');
       var max = Math.max.apply( null, floatArray );
       console.log('max', max);
       var min = Math.min.apply( null, floatArray );
       console.log('min', min);
-      pfn = htMapPaletteFn({0: 'rgba(255,255,255,0.0)', 1:'rgba(255,255,255,0.8)'});
-      canvas.width = width;
-      canvas.height = height;
-      var ctx = canvas.getContext( '2d' );
+      pfn = htMapPaletteFn({0: 'rgba(255,255,255,0.0)', 1:'rgba(255,255,255,0.4)'});
+      coverobj.canvas.width = width;
+      coverobj.canvas.height = height;
+      var ctx = coverobj.canvas.getContext( '2d' );
       var imageData = ctx.createImageData(width, height);
       for ( var i = 0, j = 0, l = imageData.data.length; i < l; i += 4, j++ ) {
         var rgba = pfn( floatArray[j] * 255/max );
@@ -252,10 +253,43 @@
         imageData.data[i+3] = rgba.a;
       }
       ctx.putImageData( imageData, 0, 0 );
-      texture.needsUpdate = true;
+      coverobj.texture.needsUpdate = true;
     }
   );
 
+  var baseobj = {};
+  baseobj.canvas = document.createElement( 'canvas' );
+  baseobj.texture = new THREE.Texture( baseobj.canvas );
+  baseobj.material = new THREE.MeshPhongMaterial({side: THREE.DoubleSide,
+      map: baseobj.texture});
+  baseobj.plane = new THREE.PlaneBufferGeometry( 512, 512, 511, 511 );
+  baseobj.mesh = new THREE.Mesh(	baseobj.plane, baseobj.material );
+  baseobj.mesh.position.z = 30;
+  //scene.add( baseobj.mesh );
+
+  loadWcsData( cloudBaseUrl, cloudBaseParams, baseobj,
+    function(floatArray, width, height, obj){
+      console.warn('have cloud data');
+      var max = Math.max.apply( null, floatArray );
+      console.log('max', max);
+      var min = Math.min.apply( null, floatArray );
+      console.log('min', min);
+      pfn = htMapPaletteFn({0: 'rgba(255,255,255,0.0)', 1:'rgba(255,255,255,0.8)'});
+      obj.canvas.width = width;
+      obj.canvas.height = height;
+      var ctx = obj.canvas.getContext( '2d' );
+      var imageData = ctx.createImageData(width, height);
+      for ( var i = 0, j = 0, l = imageData.data.length; i < l; i += 4, j++ ) {
+        var rgba = pfn( floatArray[j] * 255/max );
+        imageData.data[i] = rgba.r;
+        imageData.data[i+1] = rgba.g;
+        imageData.data[i+2] = rgba.b;
+        imageData.data[i+3] = rgba.a;
+      }
+      ctx.putImageData( imageData, 0, 0 );
+      obj.texture.needsUpdate = true;
+    }
+  );
   // create custom material from the shader code above
   //   that is within specially labelled script tags
   var customMaterial = new THREE.ShaderMaterial(
@@ -266,10 +300,11 @@
       side: THREE.DoubleSide
     }   );
 
-    var planeGeo = new THREE.PlaneBufferGeometry( 1000, 1000, 499, 499 );
-    var plane = new THREE.Mesh(	planeGeo, customMaterial );
-    scene.add( plane );
-
+    {
+      var plane = new THREE.PlaneBufferGeometry( 512, 512, 511, 511 );
+      var mesh = new THREE.Mesh(	plane, customMaterial );
+      scene.add( mesh );
+    }
     </script>
   </head>
   <body>
