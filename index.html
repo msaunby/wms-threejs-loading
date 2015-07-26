@@ -88,13 +88,43 @@
     srs:'EPSG:4326',
     format:'image/jpeg',
     layers:'gebco_latest',
-    width:2048,
-    height:2048,
+    width:1024,
+    height:1024,
     version:'1.1.1'
   };
 
   var landTxtrUrl = 'http://www.gebco.net/' +
   'data_and_products/gebco_web_services/web_map_service/mapserv?';
+
+  var cloudBaseParams= {
+    REQUEST:'GetCoverage',
+    SERVICE:'WCS',
+    VERSION:'1.0',
+    COVERAGE:'UKPPBEST_Cloud_base',
+    ELEVATION:'cloud-base',
+    model:'UKPPBEST',
+    CRS:'EPSG:4326',
+    BBOX:'-10.12,48.77,2.43,59.29',
+    WIDTH:512,
+    HEIGHT:512,
+  };
+
+  var cloudBaseUrl = 'http://python-wetoffice.rhcloud.com/tiffpngf?';
+
+  var cloudCoverParams= {
+    REQUEST:'GetCoverage',
+    SERVICE:'WCS',
+    VERSION:'1.0',
+    COVERAGE:'UKPPBEST_Total_cloud_cover',
+    ELEVATION:'atmosphere',
+    model:'UKPPBEST',
+    CRS:'EPSG:4326',
+    BBOX:'-10.12,48.77,2.43,59.29',
+    WIDTH:256,
+    HEIGHT:256,
+  }
+
+  var cloudCoverUrl = 'http://python-wetoffice.rhcloud.com/tiffpngf?';
 
   var bumpScale = 4.0;
 
@@ -119,15 +149,113 @@
     tmpImage.src =  wmsPng;
   }
 
+  // This function requires a simple WCS proxy.
+  // The proxy fetches GeoTIFFfloat data, i.e.
+  // grid of 32 bit floating point numbers which it packs
+  // into a PNG image.
+  function loadWcsData( url, params, cb ){
+    var tmpImage = new Image();
+    var wcsPng = url + jQuery.param( params );
+    tmpImage.onload = function(){
+      var canv = document.createElement('canvas');
+      var ctx = canv.getContext('2d');
+      canv.width = this.width;
+      canv.height = this.height;
+      ctx.drawImage(this, 0, 0);
+      var imageData = ctx.getImageData(0,0,this.width, this.height).data;
+      var buffer = new ArrayBuffer(imageData.length);
+      // Write to the buffer as bytes - always
+      (new Uint8Array(buffer)).set( imageData );
+      var floatArray = new Float32Array(buffer);
+      cb(floatArray,canv.width,canv.height);
+    }
+    tmpImage.crossOrigin = 'anonymous';
+    tmpImage.src =  wcsPng;
+  }
+
+// Call like this:
+// pfn = htMapPaletteFn({0: 'rgba(0,0,0,0.0)', 1:'rgba(255,255,255,1.0)'});
+// rgba = pfn(i);
+// Where i is in range 0.0 to 255.0
+  htMapPaletteFn = function(colorStops) {
+  var canvas = document.createElement( 'canvas' );
+  canvas.width = 256;
+  canvas.height = 1;
+
+  var context = canvas.getContext( '2d' );
+  var grad = context.createLinearGradient(0,0,256,0);
+  for (var stop in colorStops){
+    grad.addColorStop( stop, colorStops[stop] );
+  }
+  context.fillStyle = grad;
+  context.fillRect(0, 0, 256, 1);
+
+  var palette = [], r, g, b, a;
+  var image = context.getImageData( 0, 0, canvas.width, 1 );
+  for ( var i = 0; i < image.data.length; i += 4 ) {
+    r = image.data[ i ];
+    g = image.data[ i + 1 ];
+    b = image.data[ i + 2 ];
+    a = image.data[ i + 3 ];
+    palette.push({r:r,g:g,b:b,a:a});
+  }
+  var fn = function(v){
+    v = ~~v;  // removes fractional part of float
+    v = (v>255) ? 255 : v;
+    v = (v<0) ? 0 : v;
+    return palette[v];
+  };
+  return fn;
+}
+
+
   loadWmsImage( htMapUrl, htMapParams,
     function(img){
       customUniforms.bumpTexture.value = new THREE.ImageUtils.loadTexture(img);
-    });
+    }
+  );
 
   loadWmsImage( landTxtrUrl, landTxtrParams,
     function(img){
       customUniforms.wrapTexture.value = new THREE.ImageUtils.loadTexture(img);
-    });
+    }
+  );
+
+  var canvas = document.createElement( 'canvas' );
+  var texture = new THREE.Texture( canvas );
+  var material = new THREE.MeshPhongMaterial({side: THREE.DoubleSide,
+  map: texture, transparent: true,
+  specular: 0xffffff,
+  shininess: 20});
+  var planeGeo = new THREE.PlaneBufferGeometry( 1000, 1000, 499, 499 );
+  var mesh = new THREE.Mesh(	planeGeo, material );
+  mesh.position.z = 10;
+  scene.add( mesh );
+
+  loadWcsData( cloudCoverUrl, cloudCoverParams,
+    function(floatArray, width, height){
+      console.warn('have cloud data');
+      var max = Math.max.apply( null, floatArray );
+      console.log('max', max);
+      var min = Math.min.apply( null, floatArray );
+      console.log('min', min);
+      pfn = htMapPaletteFn({0: 'rgba(255,255,255,0.0)', 1:'rgba(255,255,255,0.8)'});
+      canvas.width = width;
+      canvas.height = height;
+      var ctx = canvas.getContext( '2d' );
+      var imageData = ctx.createImageData(width, height);
+      for ( var i = 0, j = 0, l = imageData.data.length; i < l; i += 4, j++ ) {
+        var rgba = pfn( floatArray[j] * 255/max );
+        imageData.data[i] = rgba.r;
+        imageData.data[i+1] = rgba.g;
+        imageData.data[i+2] = rgba.b;
+        imageData.data[i+3] = rgba.a;
+      }
+      ctx.putImageData( imageData, 0, 0 );
+      texture.needsUpdate = true;
+    }
+  );
+
   // create custom material from the shader code above
   //   that is within specially labelled script tags
   var customMaterial = new THREE.ShaderMaterial(
