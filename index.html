@@ -31,14 +31,15 @@
   }
   </script>
 
-  <script id="fragmentShader" type="x-shader/x-vertex">
+  <script id="fragmentShader" type="x-shader/x-fragment">
   uniform sampler2D wrapTexture;
   //varying float vAmount;  // if we want to do height dependent shading.
   varying vec2 vUV;
 
   void main()
   {
-    gl_FragColor = texture2D( wrapTexture, vUV );
+    vec4 color = texture2D( wrapTexture, vUV );
+    gl_FragColor = color;
   }
   </script>
 
@@ -134,6 +135,12 @@
     wrapTexture: { type: "t", value: undefined }
   };
 
+  cloudUniforms = {
+    bumpTexture:	{ type: "t", value: undefined },
+    bumpScale:	    { type: "f", value: bumpScale },
+    wrapTexture: { type: "t", value: undefined }
+  };
+
   function loadWmsImage( url, params, cb ){
     var tmpImage = new Image();
     var wmsPng = url + jQuery.param( params );
@@ -212,12 +219,15 @@
   loadWmsImage( htMapUrl, htMapParams,
     function(img){
       customUniforms.bumpTexture.value = new THREE.ImageUtils.loadTexture(img);
+
+
     }
   );
 
   loadWmsImage( landTxtrUrl, landTxtrParams,
     function(img){
       customUniforms.wrapTexture.value = new THREE.ImageUtils.loadTexture(img);
+
     }
   );
 
@@ -231,7 +241,7 @@
   coverobj.plane = new THREE.PlaneBufferGeometry( 512, 512, 511, 511 );
   coverobj.mesh = new THREE.Mesh(	coverobj.plane, coverobj.material );
   coverobj.mesh.position.z = 10;
-  scene.add( coverobj.mesh );
+  //scene.add( coverobj.mesh );
 
   loadWcsData( cloudCoverUrl, cloudCoverParams, coverobj,
     function(floatArray, width, height, obj){
@@ -240,7 +250,7 @@
       console.log('max', max);
       var min = Math.min.apply( null, floatArray );
       console.log('min', min);
-      pfn = htMapPaletteFn({0: 'rgba(255,255,255,0.0)', 1:'rgba(255,255,255,0.4)'});
+      pfn = htMapPaletteFn({0: 'rgba(255,255,255,0.0)', 1:'rgba(255,255,255,0.7)'});
       coverobj.canvas.width = width;
       coverobj.canvas.height = height;
       var ctx = coverobj.canvas.getContext( '2d' );
@@ -292,6 +302,10 @@
   );
   // create custom material from the shader code above
   //   that is within specially labelled script tags
+
+  cloudUniforms.wrapTexture.value = coverobj.texture;
+  cloudUniforms.bumpTexture.value = baseobj.texture;
+
   var customMaterial = new THREE.ShaderMaterial(
     {
       uniforms: customUniforms,
@@ -300,11 +314,51 @@
       side: THREE.DoubleSide
     }   );
 
+    var cloudMaterial = new THREE.ShaderMaterial(
+      {
+        uniforms: cloudUniforms,
+        vertexShader:   document.getElementById( 'vertexShader'   ).textContent,
+        fragmentShader: document.getElementById( 'fragmentShader' ).textContent,
+        side: THREE.DoubleSide
+      }   );
+
     {
       var plane = new THREE.PlaneBufferGeometry( 512, 512, 511, 511 );
       var mesh = new THREE.Mesh(	plane, customMaterial );
       scene.add( mesh );
     }
+    /*
+    {
+      var material = new THREE.MeshPhongMaterial({ bumpMap: customUniforms.bumpTexture.value,
+      bumpScale: 100.0,
+		    map: customUniforms.wrapTexture.value, transparent: true, specular: 0x444444, shininess: 10 });
+    var plane = new THREE.PlaneBufferGeometry( 512, 512, 511, 511 );
+    var mesh = new THREE.Mesh(	plane, material );
+    scene.add( mesh );
+    }
+    */
+    /*
+    {
+      var plane = new THREE.PlaneBufferGeometry( 512, 512, 511, 511 );
+      var mesh = new THREE.Mesh(	plane, cloudMaterial );
+      scene.add( mesh );
+    }
+    */
+
+    {
+    //console.log('bump', baseobj.texture);
+    console.log('bump', customUniforms.bumpTexture.value);
+    console.log('map', coverobj.texture);
+    var material = new THREE.MeshPhongMaterial({ bumpMap: customUniforms.bumpTexture.value,
+      bumpScale: 1.0,
+        map: coverobj.texture, transparent: true, specular: 0x444444, shininess: 10 });
+    var plane = new THREE.PlaneBufferGeometry( 512, 512, 511, 511 );
+    var mesh = new THREE.Mesh(	plane, material );
+    scene.add( mesh );
+    }
+
+
+
     </script>
   </head>
   <body>
