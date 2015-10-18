@@ -43,21 +43,43 @@
   var scene = new THREE.Scene();
   var width  = window.innerWidth,
   height = window.innerHeight;
-  var camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 0);
+  var camera = new THREE.PerspectiveCamera(45, (width/2) / height, 0.1, 0);
   camera.position.y = -500;
-  camera.position.z = 500;
+  camera.position.z = 2000;
   var controls = new THREE.TrackballControls(camera);
 
   var ambientLight = new THREE.AmbientLight( 0xffffff );
   scene.add( ambientLight );
   var renderer = new THREE.WebGLRenderer();
-  renderer.setSize(width, height);
+  renderer.setSize(width/2, height);
 
   function render() {
     controls.update();
     requestAnimationFrame(render);
     renderer.render(scene, camera);
   }
+
+  window.addEventListener( 'resize', function(){
+      camera.aspect = (window.innerWidth / 2 ) / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize( window.innerWidth / 2, window.innerHeight );
+  }, false);
+
+  window.addEventListener( 'load', function (){
+    document.getElementById('texture').appendChild(textureCanv);
+    document.getElementById('weather').appendChild(weatherCanv);
+  }, false);
+
+  var textureCanv = document.createElement('canvas');
+  textureCanv.width = 2048;
+  textureCanv.height = 2048;
+  textureCanv.style.width  = '200px';
+  textureCanv.style.height = '200px';
+  var weatherCanv = document.createElement('canvas');
+  weatherCanv.width = 256;
+  weatherCanv.height = 256;
+  weatherCanv.style.width  = '200px';
+  weatherCanv.style.height = '200px';
 
   var htMapParams = {
     REQUEST:'GetMap',
@@ -86,16 +108,34 @@
     srs:'EPSG:4326',
     format:'image/jpeg',
     layers:'gebco_latest',
-    width:2048,
-    height:2048,
+    width:textureCanv.width,
+    height:textureCanv.height,
     version:'1.1.1'
   };
   var landTxtrPng = 'http://www.gebco.net/' +
   'data_and_products/gebco_web_services/web_map_service/mapserv?' +
   jQuery.param( landTxtrParams );
 
+  var wxParams = {
+    REQUEST:'GetCoverage',
+    MODEL:'UKPPBEST',
+    COVERAGE:'UKPPBEST_Total_Precipitation',
+    SERVICE:'WCS',
+    BBOX:'-10.12,48.77,2.43,59.29',
+    CRS:'EPSG:4326',
+    ELEVATION:'gnd-surf',
+    WIDTH:weatherCanv.width,
+    HEIGHT:weatherCanv.height,
+    VERSION:'1.0'
+  };
+  var wxPng = 'http://python-wetoffice.rhcloud.com/' +
+  '/tiffpngf?' +
+  jQuery.param( wxParams );
+
+
   var htImage = new Image();
   var wrImage = new Image();
+  var wxImage = new Image();
   var bumpScale = 10.0;
   var bumpTexture;
   var wrapTexture;
@@ -119,16 +159,24 @@
   htImage.src = htMapPng;
 
   wrImage.onload = function(){
-    var canv = document.createElement('canvas');
+    var canv = textureCanv;
     var ctx = canv.getContext('2d');
-    canv.width = this.width;
-    canv.height = this.height;
     ctx.drawImage(this, 0, 0);
     wrapTexture = new THREE.ImageUtils.loadTexture ( canv.toDataURL() );
     customUniforms.wrapTexture.value = wrapTexture;
   }
   wrImage.crossOrigin = 'anonymous';
   wrImage.src =  landTxtrPng;
+
+  wxImage.onload = function(){
+    var canv = weatherCanv;
+    var ctx = canv.getContext('2d');
+    ctx.drawImage(this, 0, 0);
+    //wrapTexture = new THREE.ImageUtils.loadTexture ( canv.toDataURL() );
+    //customUniforms.wrapTexture.value = wrapTexture;
+  }
+  wxImage.crossOrigin = 'anonymous';
+  wxImage.src =  wxPng;
 
   // create custom material from the shader code above
   //   that is within specially labelled script tags
@@ -147,7 +195,11 @@
     </script>
   </head>
   <body>
-    <div id="webgl"></div>
+    <div style="left:0px;position:absolute;width:50%">
+        <div id="texture" style="left:0px;position:absolute;width:200px"></div>
+        <div id="weather" style="left:200px;position:absolute;width:200px"></div>
+    </div>
+    <div style="right:0px;position:absolute;width:50%" id="webgl"></div>
     <script>
     document.getElementById('webgl').appendChild(renderer.domElement);
     render();
